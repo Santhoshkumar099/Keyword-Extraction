@@ -6,6 +6,7 @@ from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 import pickle
+import fitz  # PyMuPDF
 
 # Download necessary NLTK data
 nltk.download('stopwords')
@@ -29,29 +30,32 @@ def get_keywords(idx, docs, cv, tfidf_transformer, feature_names):
     sorted_words = sorted(zip(doc_vector.tocoo().col, doc_vector.data), key=lambda x: (x[1], x[0]), reverse=True)[:10]
     return {feature_names[idx]: round(score, 3) for idx, score in sorted_words}
 
+# Function to extract text from PDF files
+def extract_text_from_pdf(file):
+    doc = fitz.open(file)
+    text = ""
+    for page in doc:
+        text += page.get_text()
+    return text
+
 # Streamlit app layout
 st.title("Research Paper Keyword Extractor")
 
-# File uploader for the CSV file
-uploaded_file = st.file_uploader("Upload your CSV file with papers", type="csv")
+# File uploader for PDF or DOCX files
+uploaded_file = st.file_uploader("Upload your PDF or DOCX file with papers", type=["pdf", "docx"])
 
 if uploaded_file is not None:
-    # Load the uploaded CSV
-    df = pd.read_csv(uploaded_file)
+    # Handle PDF files
+    if uploaded_file.type == "application/pdf":
+        st.write("Extracting text from PDF...")
+        text = extract_text_from_pdf(uploaded_file)
+    else:
+        # You can implement a DOCX text extraction here
+        st.write("DOCX files support coming soon!")
 
-    # Limit the dataset to 5000 rows (for performance reasons)
-    df = df.iloc[:5000, :]
-
-    # Show the first few papers' titles and abstracts
-    st.subheader("Select a Paper to Analyze")
-    selected_idx = st.selectbox("Choose a paper:", df.index, format_func=lambda x: df['title'][x])
-
-    st.write(f"**Title**: {df['title'][selected_idx]}")
-    st.write(f"**Abstract**: {df['abstract'][selected_idx]}")
-
-    # Preprocess the text column (paper_text)
+    # Preprocess the text
     st.write("Processing the paper text...")
-    docs = df['paper_text'].apply(preprocess_text)
+    docs = [preprocess_text(text)]
 
     # Create or load the vectorizer and transformer models
     if 'cv.pkl' in st.session_state:
@@ -68,6 +72,12 @@ if uploaded_file is not None:
         st.session_state['cv.pkl'] = cv
         st.session_state['tfidf.pkl'] = tfidf_transformer
         st.session_state['featurenames.pkl'] = feature_names
+
+    # Extract and display keywords
+    st.write("Top 10 Keywords:")
+    keywords = get_keywords(0, docs, cv, tfidf_transformer, feature_names)
+    for word, score in keywords.items():
+        st.write(f"**{word}**: {score}")
 
     # Extract and display keywords
     st.write("Top 10 Keywords:")
